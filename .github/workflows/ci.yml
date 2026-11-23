@@ -31,18 +31,20 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Project
+        run: xcodebuild -list -project "$PROJECT"
+
       # Runner images change their simulators over time, so take the newest
       # iPhone that the selected Xcode can actually test on.
       - name: Pick an iPhone simulator
         id: simulator
         run: |
-          destinations=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showdestinations 2>/dev/null \
-            | grep 'platform:iOS Simulator' | grep 'name:iPhone' || true)
-          echo "$destinations"
-          choice=$(echo "$destinations" \
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showdestinations | tee destinations.txt
+          choice=$(grep 'platform:iOS Simulator' destinations.txt | grep 'name:iPhone' \
             | sed -E 's/.*id:([^,]+), OS:([^,]+), name:([^}]*[^ }]) *\}.*/\2|\1|\3/' \
             | sort -t '|' -k1,1V | tail -n 1)
           if [ -z "$choice" ]; then
+            xcrun simctl list devices available
             echo "::error::No iPhone simulator available"
             exit 1
           fi

@@ -37,11 +37,11 @@ struct KeychainSettingsStore: SettingsStore {
     }
 
     func clear() {
-        SecItemDelete(
-            [
-                kSecClass: kSecClassGenericPassword,
-                kSecAttrService: service,
-            ] as CFDictionary)
+        let all: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+        ]
+        SecItemDelete(all as CFDictionary)
     }
 
     private func query(_ key: String) -> [CFString: Any] {
@@ -53,11 +53,11 @@ struct KeychainSettingsStore: SettingsStore {
     }
 
     private func read(_ key: String) -> String? {
-        var query = query(key)
-        query[kSecReturnData] = true
-        query[kSecMatchLimit] = kSecMatchLimitOne
+        var search = query(key)
+        search[kSecReturnData] = true
+        search[kSecMatchLimit] = kSecMatchLimitOne
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+        guard SecItemCopyMatching(search as CFDictionary, &item) == errSecSuccess,
             let data = item as? Data
         else { return nil }
         return String(data: data, encoding: .utf8)

@@ -299,7 +299,7 @@ private struct ConsoleTab: View {
         var line = AttributedString()
         if let timestamp = entry.timestamp {
             var time = AttributedString(AMPDate.clockTime(timestamp) + " ")
-            time.swiftUI.foregroundColor = .white.opacity(0.38)
+            time.swiftUI.foregroundColor = Color.white.opacity(0.38)
             line += time
         }
         if !entry.source.isEmpty {
@@ -310,7 +310,7 @@ private struct ConsoleTab: View {
         var contents = AttributedString(entry.contents)
         contents.swiftUI.foregroundColor =
             entry.type.lowercased().contains("error")
-            ? Color(red: 1, green: 0.32, blue: 0.32) : .white
+            ? Color(red: 1, green: 0.32, blue: 0.32) : Color.white
         line += contents
         return line
     }
@@ -498,10 +498,10 @@ private struct SettingsTab: View {
     /// The value in bold, followed by its type.
     private static func value(of setting: SettingEntry) -> AttributedString {
         var value = AttributedString(setting.value.isEmpty ? "(leer)" : setting.value)
-        value.swiftUI.font = .footnote.weight(.semibold)
+        value.swiftUI.font = Font.footnote.weight(.semibold)
         if setting.type.isEmpty { return value }
         var type = AttributedString(" • \(setting.type)")
-        type.swiftUI.foregroundColor = .secondary
+        type.swiftUI.foregroundColor = Color.secondary
         return value + type
     }
 }
