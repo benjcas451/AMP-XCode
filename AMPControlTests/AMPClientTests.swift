@@ -66,7 +66,7 @@ final class AMPClientTests {
                                     "FriendlyName": "Survival",
                                     "Module": "Minecraft",
                                     "Running": true,
-                                    "AppState": 40,
+                                    "AppState": 20,
                                     "Metrics": [
                                         "CPU Usage": [
                                             "RawValue": 12,
@@ -84,7 +84,7 @@ final class AMPClientTests {
                 return .json(instanceActionResult)
             case "\(instance)/Core/GetUpdates":
                 return .json([
-                    "Status": ["State": 10, "Uptime": "00:00:00", "Metrics": [:]],
+                    "Status": ["State": 0, "Uptime": "00:00:00", "Metrics": [:]],
                     "ConsoleEntries": [
                         [
                             "Timestamp": "/Date(1700000000000)/",
@@ -216,7 +216,7 @@ final class AMPClientTests {
                     "Category": "Scheduler",
                 ],
             ],
-            "Core/GetStatus": ["State": 100, "Uptime": "", "Metrics": [:]],
+            "Core/GetStatus": ["State": 75, "Uptime": "", "Metrics": [:]],
             "Core/UpdateApplication": ["Status": true],
         ])
     }

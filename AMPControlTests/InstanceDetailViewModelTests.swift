@@ -9,8 +9,8 @@ final class InstanceDetailViewModelTests {
     private var requests: [RecordedRequest] = []
     /// Responses by `Module/Method`, the same for every instance.
     private var responses: [String: JSONValue] = [
-        "Core/GetUpdates": ["Status": ["State": 10], "ConsoleEntries": []],
-        "Core/GetStatus": ["State": 10],
+        "Core/GetUpdates": ["Status": ["State": 0], "ConsoleEntries": []],
+        "Core/GetStatus": ["State": 0],
         "Core/GetUserList": [:],
         "LocalFileBackupPlugin/GetBackups": [],
         "FileManagerPlugin/GetDirectoryListing": [],
@@ -40,8 +40,8 @@ final class InstanceDetailViewModelTests {
                 ])
             }
             if method == "Core/UpdateApplication" {
-                responses["Core/GetStatus"] = ["State": 100]
-                responses["Core/GetUpdates"] = ["Status": ["State": 100], "ConsoleEntries": []]
+                responses["Core/GetStatus"] = ["State": 75]
+                responses["Core/GetUpdates"] = ["Status": ["State": 75], "ConsoleEntries": []]
             }
             return .json(responses[method] ?? .null)
         }
@@ -64,24 +64,24 @@ final class InstanceDetailViewModelTests {
     // MARK: - Tests
 
     @Test func statusChangesFromStartingToRunningAndStopped() async throws {
-        responses["Core/GetUpdates"] = ["Status": ["State": 35], "ConsoleEntries": []]
+        responses["Core/GetUpdates"] = ["Status": ["State": 10], "ConsoleEntries": []]
         let model = try await model()
         #expect(model.status?.state.label == "Startet")
-        responses["Core/GetUpdates"] = ["Status": ["State": "40"], "ConsoleEntries": []]
+        responses["Core/GetUpdates"] = ["Status": ["State": "20"], "ConsoleEntries": []]
         await model.poll()
         #expect(model.status?.state == .ready)
         #expect(model.status?.state.label == "Läuft")
         #expect(model.updateStatus?.state == .ready)
-        responses["Core/GetUpdates"] = ["Status": ["State": 10], "ConsoleEntries": []]
+        responses["Core/GetUpdates"] = ["Status": ["State": 0], "ConsoleEntries": []]
         await model.poll()
         #expect(model.status?.state == .stopped)
     }
 
     @Test func statusWithoutUpdatePayloadUsesTheCurrentServerStatus() async throws {
-        responses["Core/GetUpdates"] = ["Status": ["State": 35], "ConsoleEntries": []]
+        responses["Core/GetUpdates"] = ["Status": ["State": 10], "ConsoleEntries": []]
         let model = try await model()
         responses["Core/GetUpdates"] = ["Status": .null, "ConsoleEntries": []]
-        responses["Core/GetStatus"] = ["State": 40]
+        responses["Core/GetStatus"] = ["State": 20]
         let reads = count("Core/GetStatus")
         await model.poll()
         #expect(count("Core/GetStatus") == reads + 1)
@@ -96,7 +96,7 @@ final class InstanceDetailViewModelTests {
         await model.poll()
         #expect(model.error == "Status nicht erreichbar")
         #expect(model.console.last?.entry.contents == "new line")
-        responses["Core/GetStatus"] = ["State": 40]
+        responses["Core/GetStatus"] = ["State": 20]
         await model.poll()
         #expect(model.error == nil)
         #expect(model.status?.state == .ready)
@@ -295,7 +295,7 @@ final class InstanceDetailViewModelTests {
         let lines = (0..<(InstanceDetailViewModel.maxConsoleLines + 20)).map { index -> JSONValue in
             ["Contents": .string("line \(index)"), "Type": "Console"]
         }
-        responses["Core/GetUpdates"] = ["Status": ["State": 40], "ConsoleEntries": .array(lines)]
+        responses["Core/GetUpdates"] = ["Status": ["State": 20], "ConsoleEntries": .array(lines)]
         await model.poll()
         #expect(model.console.count == InstanceDetailViewModel.maxConsoleLines)
         #expect(model.console.first?.entry.contents == "line 20")
@@ -309,7 +309,7 @@ final class InstanceDetailViewModelTests {
         responses["Core/GetUpdates"] = ["Status": false, "Reason": "Instanz nicht erreichbar"]
         await model.poll()
         #expect(model.error == "Instanz nicht erreichbar")
-        responses["Core/GetUpdates"] = ["Status": ["State": 10], "ConsoleEntries": []]
+        responses["Core/GetUpdates"] = ["Status": ["State": 0], "ConsoleEntries": []]
         await model.poll()
         #expect(model.error == nil)
     }

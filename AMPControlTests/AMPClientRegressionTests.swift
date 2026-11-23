@@ -88,9 +88,9 @@ final class AMPClientRegressionTests {
     }
 
     @Test func invalidMetricsAndConsoleEntriesAreReportedAsReadErrors() async {
-        respond(with: ["State": 40, "Metrics": ["CPU Usage": ["RawValue": "invalid"]]])
+        respond(with: ["State": 20, "Metrics": ["CPU Usage": ["RawValue": "invalid"]]])
         #expect(await ampError { _ = try await client.getStatus("mc") } != nil)
-        respond(with: ["Status": ["State": 40], "ConsoleEntries": [.null]])
+        respond(with: ["Status": ["State": 20], "ConsoleEntries": [.null]])
         #expect(await ampError { _ = try await client.getUpdates("mc") } != nil)
         respond(with: ["State": "invalid"])
         #expect(await ampError { _ = try await client.getStatus("mc") } != nil)
@@ -319,7 +319,7 @@ final class AMPClientRegressionTests {
     }
 
     @Test func gameUpdatesUseApplicationStateAndNeverCallAMPUpdateEndpoints() async throws {
-        respond(with: ["State": 100])
+        respond(with: ["State": 75])
         #expect(try await client.getUpdateStatus("mc").state == .updating)
         respond(with: ["Status": true])
         try await client.runUpdate("mc")

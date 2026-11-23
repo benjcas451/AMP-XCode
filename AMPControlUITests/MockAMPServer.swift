@@ -114,10 +114,10 @@ final class MockAMPServer {
                 [{"AvailableInstances":[
                   {"InstanceID":"mc","InstanceName":"Minecraft01","FriendlyName":"Survival",
                    "Module":"Minecraft","ModuleDisplayName":"Minecraft Java Edition",
-                   "Running":true,"AppState":40,"Metrics":\(metrics)},
+                   "Running":true,"AppState":20,"Metrics":\(metrics)},
                   {"InstanceID":"valheim","InstanceName":"Valheim01","FriendlyName":"Valheim",
                    "Module":"GenericModule","ModuleDisplayName":"Valheim",
-                   "Running":\(valheimRunning),"AppState":10}
+                   "Running":\(valheimRunning),"AppState":0}
                 ]}]
                 """
         case "ADSModule/StartInstance", "ADSModule/StopInstance":
@@ -170,7 +170,7 @@ final class MockAMPServer {
     }
 
     private var status: String {
-        #"{"State":40,"Uptime":"0:01:23:45","Metrics":\#(metrics)}"#
+        #"{"State":20,"Uptime":"0:01:23:45","Metrics":\#(metrics)}"#
     }
 
     private let metrics = """

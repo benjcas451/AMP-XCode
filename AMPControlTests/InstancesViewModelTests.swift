@@ -37,7 +37,7 @@ private final class FakeADS {
                                 "FriendlyName": "Survival",
                                 "Module": "Minecraft",
                                 "Running": .bool(running),
-                                "AppState": 10,
+                                "AppState": 0,
                             ]
                         ]
                     ]

@@ -179,7 +179,7 @@ private struct InstanceTile: View {
     if let instance = try? AMPInstance(json: [
         "InstanceID": "preview", "InstanceName": "Minecraft01",
         "FriendlyName": "Rumpelkammer", "Module": "Minecraft",
-        "Running": true, "AppState": 35,
+        "Running": true, "AppState": 20,
         "Metrics": [
             "CPU Usage": ["RawValue": 1, "Percent": 1, "Units": "%"],
             "Memory Usage": ["RawValue": 2182, "MaxValue": 28672, "Units": "MB"],

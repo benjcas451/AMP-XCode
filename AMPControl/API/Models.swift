@@ -4,27 +4,36 @@ import Foundation
 /// expected to send. The client reports it as "Ungültige Antwort".
 struct InvalidResponse: Error {}
 
-/// AMP application states (`ApplicationState` enum in AMP).
+/// AMP application states (`ApplicationState` enum in AMP). The codes are
+/// AMP's own; `Ready` is 20, so a running server must never read as starting.
 enum ApplicationState: Int, CaseIterable, Sendable {
-    case undefined = 0
-    case stopped = 10
-    case preStart = 20
-    case configuring = 30
-    case starting = 35
-    case ready = 40
-    case restarting = 45
-    case stopping = 50
-    case preparingForSleep = 60
-    case sleeping = 70
-    case waiting = 80
-    case installing = 90
-    case updating = 100
-    case awaitingUserInput = 200
-    case failed = 999
+    case undefined = -1
+    case stopped = 0
+    case preStart = 5
+    case configuring = 7
+    case starting = 10
+    case ready = 20
+    case restarting = 30
+    case stopping = 40
+    case preparingForSleep = 45
+    case sleeping = 50
+    case waiting = 60
+    case installing = 70
+    case updating = 75
+    case awaitingUserInput = 80
+    case failed = 100
+    case suspended = 200
+    case maintenance = 250
 
-    /// Unknown or missing codes map to `.undefined`.
+    /// Missing and unknown codes, including AMP's `Indeterminate` (999), map
+    /// to `.undefined`. A missing code must not fall back to 0, which is
+    /// `Stopped`.
     init(code: JSONValue?) {
-        self = ApplicationState(rawValue: code?.lenientInt ?? 0) ?? .undefined
+        guard let raw = code?.lenientInt else {
+            self = .undefined
+            return
+        }
+        self = ApplicationState(rawValue: raw) ?? .undefined
     }
 
     var label: String {
@@ -43,6 +52,8 @@ enum ApplicationState: Int, CaseIterable, Sendable {
         case .updating: "Aktualisiert"
         case .awaitingUserInput: "Wartet auf Eingabe"
         case .failed: "Fehler"
+        case .suspended: "Gesperrt"
+        case .maintenance: "Wartung"
         }
     }
 

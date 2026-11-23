@@ -5,13 +5,29 @@ import Testing
 
 struct ModelTests {
     @Test func stateCodesArriveAsNumbersOrStrings() {
-        #expect(ApplicationState(code: 40) == .ready)
-        #expect(ApplicationState(code: "100") == .updating)
+        #expect(ApplicationState(code: 20) == .ready)
+        #expect(ApplicationState(code: "75") == .updating)
         #expect(ApplicationState(code: 12345) == .undefined)
         #expect(ApplicationState(code: nil) == .undefined)
         #expect(ApplicationState.starting.isBusy)
         #expect(!ApplicationState.sleeping.isBusy)
         #expect(ApplicationState.failed.isStopped)
+    }
+
+    /// AMP's own codes. A running server (`Ready` = 20) was once read as
+    /// starting, and a stopped one (0) as unknown.
+    @Test func stateCodesMatchAMP() {
+        #expect(ApplicationState(code: 0) == .stopped)
+        #expect(ApplicationState(code: 5) == .preStart)
+        #expect(ApplicationState(code: 10) == .starting)
+        #expect(ApplicationState(code: 20) == .ready)
+        #expect(ApplicationState(code: 20).label == "Läuft")
+        #expect(ApplicationState(code: 30) == .restarting)
+        #expect(ApplicationState(code: 40) == .stopping)
+        #expect(ApplicationState(code: 50) == .sleeping)
+        #expect(ApplicationState(code: 100) == .failed)
+        #expect(ApplicationState(code: -1) == .undefined)
+        #expect(ApplicationState(code: 999) == .undefined)
     }
 
     @Test func metricsFormatTheirValues() throws {

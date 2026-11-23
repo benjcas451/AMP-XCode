@@ -4,11 +4,11 @@ extension ApplicationState {
     var color: Color {
         switch self {
         case .undefined: .gray
-        case .stopped, .failed: .red
+        case .stopped, .failed, .suspended: .red
         case .preStart, .configuring, .starting, .restarting, .stopping, .waiting: .orange
         case .ready: .green
         case .preparingForSleep, .sleeping: Color(red: 0.38, green: 0.49, blue: 0.55)
-        case .installing, .updating: .blue
+        case .installing, .updating, .maintenance: .blue
         case .awaitingUserInput: .yellow
         }
     }
