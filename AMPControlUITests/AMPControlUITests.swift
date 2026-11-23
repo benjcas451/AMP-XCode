@@ -37,9 +37,37 @@ final class AMPControlUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 15), "\(what) not found", file: file, line: line)
     }
 
+    /// Any element whose label contains `fragment`.
     @MainActor
-    private func text(containing fragment: String, in app: XCUIApplication) -> XCUIElement {
-        app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", fragment)).firstMatch
+    private func element(labelled fragment: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", fragment)).firstMatch
+    }
+
+    /// iOS offers to save the password some time after the login form is
+    /// gone. Its sheet covers the app, so it has to be answered.
+    @MainActor
+    private func dismissSavePasswordPrompt(in app: XCUIApplication, timeout: TimeInterval = 0) {
+        let labels = NSPredicate(format: "label IN %@", ["Not Now", "Jetzt nicht"])
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            for host in [app, springboard] {
+                let notNow = host.buttons.matching(labels).firstMatch
+                if notNow.exists {
+                    notNow.tap()
+                    _ = notNow.waitForNonExistence(timeout: 5)
+                    return
+                }
+            }
+        } while Date() < deadline
+    }
+
+    /// Taps `element` once nothing from the system is in the way.
+    @MainActor
+    private func tap(_ element: XCUIElement, in app: XCUIApplication) {
+        dismissSavePasswordPrompt(in: app)
+        element.tap()
     }
 
     /// Fills in the first-run form and saves it.
@@ -64,6 +92,7 @@ final class AMPControlUITests: XCTestCase {
     private func selectTab(_ id: String, in app: XCUIApplication) {
         let tab = app.buttons["tab-\(id)"]
         assertExists(tab, "Tab \(id)")
+        dismissSavePasswordPrompt(in: app)
         for _ in 0..<4 where !tab.isHittable {
             app.scrollViews["detail-tabs"].swipeLeft()
         }
@@ -92,6 +121,7 @@ final class AMPControlUITests: XCTestCase {
 
         // Instance list
         assertExists(app.navigationBars["Instanzen"], "Instance list")
+        dismissSavePasswordPrompt(in: app, timeout: 10)
         assertExists(app.staticTexts["Survival"], "Running instance")
         XCTAssertTrue(app.staticTexts["AMP-Instanz: Läuft"].exists)
         XCTAssertTrue(app.staticTexts["AMP-Instanz: Gestoppt"].exists)
@@ -100,11 +130,11 @@ final class AMPControlUITests: XCTestCase {
         attachScreenshot("02 Instances", of: app)
 
         // Start and stop the instance that is not running
-        app.buttons["toggle-valheim"].tap()
+        tap(app.buttons["toggle-valheim"], in: app)
         assertExists(app.buttons["manage-valheim"], "Controls of the started instance")
         attachScreenshot("03 Instance started", of: app)
 
-        app.buttons["toggle-valheim"].tap()
+        tap(app.buttons["toggle-valheim"], in: app)
         let stopAlert = app.alerts["Instanz stoppen?"]
         assertExists(stopAlert, "Stop confirmation")
         attachScreenshot("04 Stop confirmation", of: app)
@@ -112,18 +142,18 @@ final class AMPControlUITests: XCTestCase {
         XCTAssertTrue(app.buttons["manage-valheim"].waitForNonExistence(timeout: 15))
 
         // Instance details
-        app.buttons["manage-mc"].tap()
+        tap(app.buttons["manage-mc"], in: app)
         assertExists(app.navigationBars["Survival"], "Detail screen")
         assertExists(app.staticTexts["Laufzeit: 0:01:23:45"], "Uptime")
         XCTAssertTrue(app.staticTexts["1536 / 4096 MB"].exists)
         attachScreenshot("05 Overview", of: app)
 
         selectTab("console", in: app)
-        assertExists(text(containing: "Done (3.2s)!", in: app), "Console output")
+        assertExists(element(labelled: "Done (3.2s)!", in: app), "Console output")
         let input = app.textFields["console-input"]
-        input.tap()
+        tap(input, in: app)
         input.typeText("say hello\n")
-        assertExists(text(containing: "[Server] say hello", in: app), "Echo of the command")
+        assertExists(element(labelled: "[Server] say hello", in: app), "Echo of the command")
         attachScreenshot("06 Console", of: app)
 
         selectTab("users", in: app)
@@ -142,7 +172,7 @@ final class AMPControlUITests: XCTestCase {
         attachScreenshot("08 Settings", of: app)
 
         selectTab("tasks", in: app)
-        assertExists(app.staticTexts["Nightly Backup"], "Scheduled task")
+        assertExists(element(labelled: "Nightly Backup", in: app), "Scheduled task")
 
         selectTab("events", in: app)
         assertExists(app.staticTexts["Backup completed"], "Audit log entry")
@@ -153,15 +183,15 @@ final class AMPControlUITests: XCTestCase {
         attachScreenshot("09 Updates", of: app)
 
         // Settings keep the saved values; deleting them leads back to the setup
-        app.navigationBars.buttons.firstMatch.tap()
+        tap(app.navigationBars.buttons.firstMatch, in: app)
         assertExists(app.navigationBars["Instanzen"], "Instance list after going back")
-        app.navigationBars["Instanzen"].buttons["Einstellungen"].tap()
+        tap(app.navigationBars["Instanzen"].buttons["Einstellungen"], in: app)
         assertExists(app.navigationBars["Einstellungen"], "Settings screen")
         XCTAssertEqual(
             app.textFields["settings-url"].value as? String, "http://127.0.0.1:\(server.port)")
         attachScreenshot("10 Connection settings", of: app)
 
-        app.buttons["Zugangsdaten löschen"].tap()
+        tap(app.buttons["Zugangsdaten löschen"], in: app)
         let deleteAlert = app.alerts["Zugangsdaten löschen?"]
         assertExists(deleteAlert, "Delete confirmation")
         deleteAlert.buttons["Löschen"].tap()
