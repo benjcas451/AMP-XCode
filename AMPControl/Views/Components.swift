@@ -63,12 +63,17 @@ struct FlowLayout: Layout {
     func placeSubviews(
         in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
     ) {
-        let arrangement = arrange(subviews, width: bounds.width)
+        // Wrap at the same width that `sizeThatFits` measured with. `bounds`
+        // only spans the occupied width, rounded to the pixel grid, so
+        // re-wrapping at it can push an item onto a row whose height was
+        // never reserved, overlapping whatever follows the layout.
+        let width = proposal.width ?? bounds.width
+        let arrangement = arrange(subviews, width: width)
         for (index, frame) in arrangement.frames.enumerated() {
             // Subviews keep their ideal size; proposing that very size again
             // can truncate text by a rounding error. Only a subview wider
             // than a whole row is limited to the row.
-            let fitsRow = frame.width < bounds.width
+            let fitsRow = frame.width < width
             subviews[index].place(
                 at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
                 proposal: fitsRow ? .unspecified : ProposedViewSize(frame.size))

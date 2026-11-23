@@ -63,6 +63,45 @@ final class InstanceDetailViewModelTests {
 
     // MARK: - Tests
 
+    @Test func statusChangesFromStartingToRunningAndStopped() async throws {
+        responses["Core/GetUpdates"] = ["Status": ["State": 35], "ConsoleEntries": []]
+        let model = try await model()
+        #expect(model.status?.state.label == "Startet")
+        responses["Core/GetUpdates"] = ["Status": ["State": "40"], "ConsoleEntries": []]
+        await model.poll()
+        #expect(model.status?.state == .ready)
+        #expect(model.status?.state.label == "Läuft")
+        #expect(model.updateStatus?.state == .ready)
+        responses["Core/GetUpdates"] = ["Status": ["State": 10], "ConsoleEntries": []]
+        await model.poll()
+        #expect(model.status?.state == .stopped)
+    }
+
+    @Test func statusWithoutUpdatePayloadUsesTheCurrentServerStatus() async throws {
+        responses["Core/GetUpdates"] = ["Status": ["State": 35], "ConsoleEntries": []]
+        let model = try await model()
+        responses["Core/GetUpdates"] = ["Status": .null, "ConsoleEntries": []]
+        responses["Core/GetStatus"] = ["State": 40]
+        let reads = count("Core/GetStatus")
+        await model.poll()
+        #expect(count("Core/GetStatus") == reads + 1)
+        #expect(model.status?.state == .ready)
+        #expect(model.updateStatus?.state == .ready)
+    }
+
+    @Test func failedStatusFallbackReportsAnErrorWithoutLosingConsoleOutput() async throws {
+        let model = try await model()
+        responses["Core/GetUpdates"] = ["ConsoleEntries": [["Contents": "new line"]]]
+        responses["Core/GetStatus"] = ["Status": false, "Reason": "Status nicht erreichbar"]
+        await model.poll()
+        #expect(model.error == "Status nicht erreichbar")
+        #expect(model.console.last?.entry.contents == "new line")
+        responses["Core/GetStatus"] = ["State": 40]
+        await model.poll()
+        #expect(model.error == nil)
+        #expect(model.status?.state == .ready)
+    }
+
     @Test func foldersNavigateRefreshAndCreateWithinTheCurrentDirectory() async throws {
         responses["FileManagerPlugin/GetDirectoryListing"] = [
             ["Filename": "world", "IsDirectory": true]

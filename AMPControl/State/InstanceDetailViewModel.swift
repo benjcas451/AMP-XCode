@@ -140,10 +140,6 @@ final class InstanceDetailViewModel {
         defer { polling = false }
         do {
             let updates = try await client.getUpdates(id)
-            if let status = updates.status {
-                self.status = status
-                updateStatus = status
-            }
             for entry in updates.console {
                 console.append(ConsoleLine(id: nextConsoleID, entry: entry))
                 nextConsoleID += 1
@@ -151,6 +147,16 @@ final class InstanceDetailViewModel {
             if console.count > Self.maxConsoleLines {
                 console.removeFirst(console.count - Self.maxConsoleLines)
             }
+            // GetUpdates may omit Status. Reconcile with a full status read
+            // so an earlier transitional state cannot remain stuck on screen.
+            let currentStatus: InstanceStatus
+            if let status = updates.status {
+                currentStatus = status
+            } else {
+                currentStatus = try await client.getStatus(id)
+            }
+            status = currentStatus
+            updateStatus = currentStatus
             error = nil
         } catch let failure as AMPError {
             error = failure.message

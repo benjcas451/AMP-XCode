@@ -174,3 +174,23 @@ private struct InstanceTile: View {
         .onTapGesture { if idle { onOpen() } }
     }
 }
+
+#Preview("Instanzkarte – Zeilenumbruch") {
+    if let instance = try? AMPInstance(json: [
+        "InstanceID": "preview", "InstanceName": "Minecraft01",
+        "FriendlyName": "Rumpelkammer", "Module": "Minecraft",
+        "Running": true, "AppState": 35,
+        "Metrics": [
+            "CPU Usage": ["RawValue": 1, "Percent": 1, "Units": "%"],
+            "Memory Usage": ["RawValue": 2182, "MaxValue": 28672, "Units": "MB"],
+            "Active Users": ["RawValue": 0, "MaxValue": 10],
+            "TPS": ["RawValue": 20, "MaxValue": 20, "Units": "TPS"],
+        ],
+    ]) {
+        ScrollView {
+            InstanceTile(instance: instance, starting: nil, onOpen: {}, onToggle: {})
+                .padding(8)
+        }
+        .preferredColorScheme(.dark)
+    }
+}
