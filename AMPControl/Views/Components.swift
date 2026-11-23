@@ -28,6 +28,8 @@ struct StateBadge: View {
             Text(state?.label ?? "Instanz aus")
                 .font(.caption)
                 .foregroundStyle(color)
+                .lineLimit(1)
+                .fixedSize()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
@@ -63,9 +65,13 @@ struct FlowLayout: Layout {
     ) {
         let arrangement = arrange(subviews, width: bounds.width)
         for (index, frame) in arrangement.frames.enumerated() {
+            // Subviews keep their ideal size; proposing that very size again
+            // can truncate text by a rounding error. Only a subview wider
+            // than a whole row is limited to the row.
+            let fitsRow = frame.width < bounds.width
             subviews[index].place(
                 at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-                proposal: ProposedViewSize(frame.size))
+                proposal: fitsRow ? .unspecified : ProposedViewSize(frame.size))
         }
     }
 

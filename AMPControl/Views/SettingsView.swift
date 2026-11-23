@@ -32,7 +32,7 @@ struct SettingsView: View {
             Section {
                 TextField(
                     "Server-URL", text: $model.url,
-                    prompt: Text("https://amp.example.com oder http://192.168.1.10:8080")
+                    prompt: Text(verbatim: "https://amp.example.com oder http://192.168.1.10:8080")
                 )
                 .keyboardType(.URL)
                 .textContentType(.URL)
@@ -137,6 +137,7 @@ struct SettingsView: View {
                     Button("Zugangsdaten löschen", systemImage: "trash", role: .destructive) {
                         Task { await model.clear() }
                     }
+                    .tint(.red)
                 }
             }
         }

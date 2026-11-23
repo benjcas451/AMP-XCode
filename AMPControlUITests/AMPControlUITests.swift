@@ -189,6 +189,9 @@ final class AMPControlUITests: XCTestCase {
         assertExists(app.navigationBars["Einstellungen"], "Settings screen")
         XCTAssertEqual(
             app.textFields["settings-url"].value as? String, "http://127.0.0.1:\(server.port)")
+        XCTAssertEqual(app.textFields["settings-username"].value as? String, "admin")
+        // The saved password is filled in, shown as one bullet per character.
+        XCTAssertEqual((app.secureTextFields["settings-password"].value as? String)?.count, 6)
         attachScreenshot("10 Connection settings", of: app)
 
         tap(app.buttons["Zugangsdaten löschen"], in: app)
