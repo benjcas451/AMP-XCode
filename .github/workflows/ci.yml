@@ -128,3 +128,14 @@ jobs:
           name: test-results
           path: build/*.xcresult
           if-no-files-found: ignore
+
+      - name: Test summary
+        if: always()
+        run: |
+          for bundle in build/UnitTests.xcresult build/UITests.xcresult; do
+            [ -d "$bundle" ] || continue
+            xcrun xcresulttool get test-results summary --path "$bundle" \
+              | jq -r --arg name "$(basename "$bundle" .xcresult)" \
+                '"\($name): \(.result) – \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped"' \
+              | tee -a "$GITHUB_STEP_SUMMARY" || true
+          done

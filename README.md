@@ -41,13 +41,14 @@ laufender Server beendet; der ADS-Controller selbst wird nicht in der Liste ange
 
 ## Bauen
 
-Voraussetzungen: Xcode 16 oder neuer, iOS 17 oder neuer. Keine externen Abhängigkeiten.
+Voraussetzungen: iOS 17 oder neuer; gebaut und getestet mit Xcode 26 (das Projektformat
+setzt mindestens Xcode 16 voraus). Keine externen Abhängigkeiten.
 
 `AMPControl.xcodeproj` in Xcode öffnen und starten, oder auf der Kommandozeile:
 
 ```bash
 xcodebuild test -project AMPControl.xcodeproj -scheme AMPControl \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
+  -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 Bundle-ID: `de.tschapps.ampControl` (wie die iOS-Variante der Flutter-App; dort
