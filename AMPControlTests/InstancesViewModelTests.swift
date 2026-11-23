@@ -12,6 +12,8 @@ private final class FakeADS {
     var updateImmediately = true
     var actionError: String?
     var actionGate: Gate?
+    /// Holds back the answer to the next instance list request.
+    var listGate: Gate?
     var starts = 0
     var stops = 0
 
@@ -21,6 +23,11 @@ private final class FakeADS {
             case "Core/Login":
                 return .json(["success": true, "sessionID": "session"])
             case "ADSModule/GetInstances":
+                let running = running
+                if let gate = listGate {
+                    listGate = nil
+                    await gate.wait()
+                }
                 return .json([
                     [
                         "AvailableInstances": [
@@ -186,6 +193,35 @@ final class InstancesViewModelTests {
         #expect(ads.starts == 1)
         #expect(toasts.current == nil)
         #expect(try !instance.running)
+    }
+
+    @Test func staysSilentWhenTheScreenIsGoneBeforeAnActionFails() async throws {
+        let gate = Gate()
+        ads.actionGate = gate
+        ads.actionError = "Keine Berechtigung"
+        let stopped = try instance
+
+        let action = Task { await model.toggle(stopped) }
+        await waitUntil("the start request is in flight") { gate.waiters == 1 }
+        active = false
+        gate.open()
+        await action.value
+        #expect(toasts.current == nil)
+    }
+
+    @Test func anOutdatedListDoesNotReplaceANewerOne() async throws {
+        let gate = Gate()
+        ads.listGate = gate
+        let outdated = Task { await model.load() }
+        await waitUntil("the first request is held back") { gate.waiters == 1 }
+
+        ads.running = true
+        await model.load()
+        #expect(try instance.running)
+
+        gate.open()
+        await outdated.value
+        #expect(try instance.running)
     }
 
     @Test func tappingAnOfflineInstanceOffersToStartIt() async throws {

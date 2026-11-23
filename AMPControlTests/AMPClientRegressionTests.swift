@@ -109,6 +109,18 @@ final class AMPClientRegressionTests {
         #expect(try await client.getTasks("mc").isEmpty)
     }
 
+    @Test func offlineADSTargetsAreSkipped() async throws {
+        respond(with: [
+            ["AvailableInstances": .null],
+            ["AvailableInstances": [["InstanceID": "mc", "InstanceName": "Minecraft01"]]],
+        ])
+        #expect(try await client.getInstances().map(\.id) == ["mc"])
+
+        respond(with: [["FriendlyName": "A target without an instance list"]])
+        let error = await ampError { _ = try await client.getInstances() }
+        #expect(error?.message == "Ungültige Antwort bei ADSModule/GetInstances.")
+    }
+
     // MARK: - Request and response details
 
     @Test func backupManifestsPreserveIDsDatesAndSizes() async throws {
@@ -228,6 +240,26 @@ final class AMPClientRegressionTests {
         respond(with: [])
         _ = try await client.getBackups("one")
         #expect(supportsBackups(instance: "one"))
+    }
+
+    @Test(arguments: [
+        ["Title": "MethodNotFound", "Message": ""],
+        ["Title": "Method GetBackups not found", "Message": ""],
+        ["Title": "Error", "Message": "Missing  method LocalFileBackupPlugin.GetBackups"],
+    ] as [JSONValue])
+    func missingMethodsAreRecognisedInTitleOrMessage(fault: JSONValue) async {
+        respond(with: fault)
+        let error = await ampError { _ = try await client.getBackups("mc") }
+        #expect(error?.isMethodUnavailable == true)
+        #expect(error?.message.contains("„GetBackups“ nicht gefunden") == true)
+        #expect(!supportsBackups(instance: "mc"))
+    }
+
+    @Test func otherServerErrorsKeepTheirTitleAndMessage() async {
+        respond(with: ["Title": "InvalidOperation", "Message": "Server is busy", "StackTrace": ""])
+        let error = await ampError { _ = try await client.getBackups("mc") }
+        #expect(error?.message == "InvalidOperation: Server is busy")
+        #expect(supportsBackups(instance: "mc"))
     }
 
     @Test func missingFilesAndConfigurationDoNotMarkAPIMethodsUnsupported() async {

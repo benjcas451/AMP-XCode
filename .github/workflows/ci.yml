@@ -101,6 +101,18 @@ jobs:
               --path build/UITests.xcresult --output-path build/screenshots || true
           fi
 
+      # What was on screen when a UI test failed, readable without
+      # downloading the artifacts.
+      - name: Show UI hierarchy of failed UI tests
+        if: failure()
+        run: |
+          for file in build/screenshots/*.txt; do
+            [ -e "$file" ] || continue
+            echo "::group::$file"
+            head -n 150 "$file"
+            echo "::endgroup::"
+          done
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v6
