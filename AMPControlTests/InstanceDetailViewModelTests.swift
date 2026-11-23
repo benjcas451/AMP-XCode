@@ -63,6 +63,58 @@ final class InstanceDetailViewModelTests {
 
     // MARK: - Tests
 
+    @Test func foldersNavigateRefreshAndCreateWithinTheCurrentDirectory() async throws {
+        responses["FileManagerPlugin/GetDirectoryListing"] = [
+            ["Filename": "world", "IsDirectory": true]
+        ]
+        let model = try await model()
+        let folder = try #require(model.files?.first)
+        responses["FileManagerPlugin/GetDirectoryListing"] = [
+            ["Filename": "data", "IsDirectory": true]
+        ]
+        await model.openFolder(folder)
+        #expect(model.directory == "world")
+        #expect(requests.last?.body["Dir"] == "world")
+        let nested = try #require(model.files?.first)
+        await model.openFolder(nested)
+        #expect(model.directory == "world/data")
+        await model.loadFiles()
+        #expect(requests.last?.body["Dir"] == "world/data")
+
+        responses["FileManagerPlugin/CreateDirectory"] = ["Status": true]
+        let creating = Task { await model.createFolder() }
+        await waitUntil("folder name prompt") { model.dialogs.isRequestingText }
+        model.dialogs.answerText("new")
+        await creating.value
+        #expect(requests.last { $0.method == "FileManagerPlugin/CreateDirectory" }?.body["NewPath"] == "world/data/new")
+        #expect(requests.last?.body["Dir"] == "world/data")
+
+        await model.openParentFolder()
+        #expect(model.directory == "world")
+        await model.openParentFolder()
+        #expect(model.directory.isEmpty)
+        let countBefore = requests.count
+        await model.openParentFolder()
+        #expect(requests.count == countBefore)
+    }
+
+    @Test func failedFolderNavigationKeepsThePreviousDirectory() async throws {
+        responses["FileManagerPlugin/GetDirectoryListing"] = [
+            ["Filename": "world", "IsDirectory": true]
+        ]
+        let model = try await model()
+        let folder = try #require(model.files?.first)
+        responses["FileManagerPlugin/GetDirectoryListing"] = ["Status": false, "Reason": "Access denied"]
+        await model.openFolder(folder)
+        #expect(model.directory.isEmpty)
+        #expect(model.files == [folder])
+        #expect(model.tabErrors[.files] == "Access denied")
+        responses["FileManagerPlugin/GetDirectoryListing"] = []
+        await model.loadFiles()
+        #expect(model.tabErrors[.files] == nil)
+        #expect(requests.last?.body["Dir"] == "")
+    }
+
     @Test func playerLoadingErrorsAreVisibleAndCanBeRetried() async throws {
         responses["Core/GetUserList"] = [
             "Status": false, "Reason": "Spielerliste nicht erreichbar",

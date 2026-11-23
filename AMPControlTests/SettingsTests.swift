@@ -44,6 +44,84 @@ final class SettingsTests {
         return form
     }
 
+    @Test func saveStaysLockedThroughOldClientLogoutAndUsesTestedValues() async throws {
+        #expect(await form(password: "secret").save())
+        let testGate = Gate()
+        let gate = Gate()
+        var logouts = 0
+        let oldSettings = store.load()
+        let app = AppModel(store: store) {
+            MockTransport { request in
+                switch request.method {
+                case "Core/GetModuleInfo":
+                    return .json(["Author": "CubeCoders Limited", "AppName": "ADS"])
+                case "Core/Login":
+                    return .json(["success": true, "sessionID": "session"])
+                case "Core/Logout":
+                    logouts += 1
+                    if logouts == 1 {
+                        await testGate.wait()
+                    } else {
+                        await gate.wait()
+                    }
+                    return .json(["Status": true])
+                default:
+                    return .json([])
+                }
+            }
+        }
+        _ = try await app.client?.getInstances()
+        let form = SettingsViewModel(app: app)
+        let saving = Task { await form.save() }
+        await waitUntil("connection test logout is pending") { testGate.waiters == 1 }
+        form.username = "edited-after-test"
+        testGate.open()
+        await waitUntil("old client logout is pending") { gate.waiters == 1 }
+        #expect(form.busy)
+        #expect(await form.save() == false)
+        #expect(await form.test() == false)
+        #expect(await form.clear() == false)
+        gate.open()
+        #expect(await saving.value)
+        #expect(store.load() == oldSettings)
+        #expect(!form.busy)
+    }
+
+    private struct FailingStore: SettingsStore {
+        let settings = ServerSettings(url: "http://amp.local", username: "admin", password: "secret")
+        func load() -> ServerSettings { settings }
+        func save(_ settings: ServerSettings) throws { throw AMPError("Speichern fehlgeschlagen") }
+        func clear() throws { throw AMPError("Löschen fehlgeschlagen") }
+    }
+
+    @Test func failedSaveKeepsTheConfiguredClientAndSettings() async {
+        let store = FailingStore()
+        let app = AppModel(store: store)
+        let client = app.client
+        let error = await ampError {
+            try await app.saveSettings(ServerSettings(url: "http://new", username: "new", password: "new"))
+        }
+        #expect(error?.message == "Speichern fehlgeschlagen")
+        #expect(app.settings == store.settings)
+        #expect(app.client === client)
+    }
+
+    @Test func failedClearKeepsTheConfiguredClientAndShowsAnError() async {
+        let store = FailingStore()
+        let app = AppModel(store: store)
+        let client = app.client
+        let form = SettingsViewModel(app: app)
+        let clearing = Task { await form.clear() }
+        await waitUntil("clear confirmation") { form.dialogs.isConfirming }
+        form.dialogs.answerConfirmation(true)
+        #expect(await clearing.value == false)
+        #expect(app.settings == store.settings)
+        #expect(app.client === client)
+        #expect(app.toasts.current?.text == "Löschen fehlgeschlagen")
+        #expect(app.toasts.current?.isError == true)
+        #expect(!form.busy)
+    }
+
     @Test func startsUnconfigured() {
         #expect(!app.isConfigured)
         #expect(app.client == nil)

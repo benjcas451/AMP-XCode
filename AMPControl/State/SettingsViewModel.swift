@@ -57,10 +57,14 @@ final class SettingsViewModel {
     /// Tries to log in with the entered values. Returns `true` on success.
     @discardableResult
     func test(quiet: Bool = false) async -> Bool {
-        guard validate(), !busy else { return false }
+        guard !busy, validate() else { return false }
         busy = true
         defer { busy = false }
-        let client = app.makeClient(for: current)
+        return await testConnection(current, quiet: quiet)
+    }
+
+    private func testConnection(_ settings: ServerSettings, quiet: Bool) async -> Bool {
+        let client = app.makeClient(for: settings)
         defer { client.close() }
         do {
             let appName = try await client.testConnection()
@@ -78,9 +82,13 @@ final class SettingsViewModel {
     /// Saves the settings if they work. Returns `true` when they were saved.
     @discardableResult
     func save() async -> Bool {
-        guard await test(quiet: true) else { return false }
+        guard !busy, validate() else { return false }
+        busy = true
+        defer { busy = false }
+        let settings = current
+        guard await testConnection(settings, quiet: true) else { return false }
         do {
-            try await app.saveSettings(current)
+            try await app.saveSettings(settings)
         } catch {
             app.toasts.show(error.localizedDescription, isError: true)
             return false
@@ -93,6 +101,9 @@ final class SettingsViewModel {
     /// they were removed.
     @discardableResult
     func clear() async -> Bool {
+        guard !busy else { return false }
+        busy = true
+        defer { busy = false }
         let confirmed = await dialogs.confirm(
             ConfirmationPrompt(
                 title: "Zugangsdaten löschen?",
@@ -101,7 +112,12 @@ final class SettingsViewModel {
                 isDestructive: true
             ))
         guard confirmed else { return false }
-        await app.clearSettings()
-        return true
+        do {
+            try await app.clearSettings()
+            return true
+        } catch {
+            app.toasts.show(error.localizedDescription, isError: true)
+            return false
+        }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-struct ServerSettings: Equatable, Sendable {
+struct ServerSettings: Equatable, Sendable, Codable {
     var url = ""
     var username = ""
     var password = ""
@@ -12,5 +12,5 @@ struct ServerSettings: Equatable, Sendable {
 protocol SettingsStore: Sendable {
     func load() -> ServerSettings
     func save(_ settings: ServerSettings) throws
-    func clear()
+    func clear() throws
 }

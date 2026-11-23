@@ -9,6 +9,7 @@ struct KeychainSettingsStore: SettingsStore {
     var service = "flutter_secure_storage_service"
 
     private enum Key {
+        static let settings = "amp_control_settings_v1"
         static let url = "server_url"
         static let username = "username"
         static let password = "password"
@@ -23,7 +24,11 @@ struct KeychainSettingsStore: SettingsStore {
     }
 
     func load() -> ServerSettings {
-        ServerSettings(
+        // Prefer the complete record; older Flutter/native entries remain readable.
+        if let data = readData(Key.settings) {
+            return (try? JSONDecoder().decode(ServerSettings.self, from: data)) ?? ServerSettings()
+        }
+        return ServerSettings(
             url: read(Key.url) ?? "",
             username: read(Key.username) ?? "",
             password: read(Key.password) ?? ""
@@ -31,17 +36,19 @@ struct KeychainSettingsStore: SettingsStore {
     }
 
     func save(_ settings: ServerSettings) throws {
-        try write(settings.url, for: Key.url)
-        try write(settings.username, for: Key.username)
-        try write(settings.password, for: Key.password)
+        // A single keychain update commits all three values together.
+        try write(JSONEncoder().encode(settings), for: Key.settings)
     }
 
-    func clear() {
+    func clear() throws {
         let all: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
         ]
-        SecItemDelete(all as CFDictionary)
+        let status = SecItemDelete(all as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw KeychainError(status: status)
+        }
     }
 
     private func query(_ key: String) -> [CFString: Any] {
@@ -53,6 +60,10 @@ struct KeychainSettingsStore: SettingsStore {
     }
 
     private func read(_ key: String) -> String? {
+        readData(key).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    private func readData(_ key: String) -> Data? {
         var search = query(key)
         search[kSecReturnData] = true
         search[kSecMatchLimit] = kSecMatchLimitOne
@@ -60,11 +71,10 @@ struct KeychainSettingsStore: SettingsStore {
         guard SecItemCopyMatching(search as CFDictionary, &item) == errSecSuccess,
             let data = item as? Data
         else { return nil }
-        return String(data: data, encoding: .utf8)
+        return data
     }
 
-    private func write(_ value: String, for key: String) throws {
-        let data = Data(value.utf8)
+    private func write(_ data: Data, for key: String) throws {
         var status = SecItemUpdate(
             query(key) as CFDictionary, [kSecValueData: data] as CFDictionary)
         if status == errSecItemNotFound {

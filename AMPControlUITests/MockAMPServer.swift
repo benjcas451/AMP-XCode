@@ -142,6 +142,9 @@ final class MockAMPServer {
         case "LocalFileBackupPlugin/GetBackups":
             return #"[{"Id":"b1","Name":"world-2024-06-01","Timestamp":"2024-06-01T12:00:00Z","TotalSizeBytes":20971520}]"#
         case "FileManagerPlugin/GetDirectoryListing":
+            if body["Dir"] as? String == "world" {
+                return #"[{"Filename":"level.dat","IsDirectory":false,"SizeBytes":2048}]"#
+            }
             return #"[{"Filename":"world","IsDirectory":true},{"Filename":"server.properties","IsDirectory":false,"SizeBytes":1280}]"#
         case "Core/GetSettingsSpec":
             return """

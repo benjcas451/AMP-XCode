@@ -8,7 +8,7 @@ struct AMPControlApp: App {
         let store = KeychainSettingsStore()
         #if DEBUG
         // Lets UI tests start from a clean first-run state.
-        if ProcessInfo.processInfo.arguments.contains("-resetSettings") { store.clear() }
+        if ProcessInfo.processInfo.arguments.contains("-resetSettings") { try? store.clear() }
         #endif
         _app = State(initialValue: AppModel(store: store))
     }

@@ -50,9 +50,9 @@ final class AppModel {
         rebuildClient()
     }
 
-    func clearSettings() async {
+    func clearSettings() async throws {
+        try store.clear()
         await client?.logout()
-        store.clear()
         settings = ServerSettings()
         rebuildClient()
     }

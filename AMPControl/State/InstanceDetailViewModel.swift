@@ -62,6 +62,7 @@ final class InstanceDetailViewModel {
     private(set) var users: [String]?
     private(set) var backups: [BackupEntry]?
     private(set) var files: [FileEntry]?
+    private(set) var directory = ""
     private(set) var settings: [SettingEntry]?
     private(set) var tasks: [SchedulerTask]?
     private(set) var events: [AMPEvent]?
@@ -195,7 +196,27 @@ final class InstanceDetailViewModel {
     }
 
     func loadFiles() async {
-        await load(.files) { self.files = try await self.client.getFiles(self.id) }
+        await loadDirectory(directory)
+    }
+
+    func openFolder(_ file: FileEntry) async {
+        guard file.isDirectory, files?.contains(file) == true, !isBusy(.files) else { return }
+        await loadDirectory(file.path)
+    }
+
+    func openParentFolder() async {
+        guard !directory.isEmpty, !isBusy(.files) else { return }
+        let parent = directory.split(separator: "/").dropLast().joined(separator: "/")
+        await loadDirectory(parent)
+    }
+
+    private func loadDirectory(_ path: String) async {
+        await load(.files) {
+            let files = try await self.client.getFiles(self.id, directory: path)
+            // Commit the path and its contents together only after a successful read.
+            self.directory = path
+            self.files = files
+        }
     }
 
     func loadSettings() async {
@@ -362,8 +383,9 @@ final class InstanceDetailViewModel {
             ))
         guard let path = input?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty
         else { return }
+        let fullPath = directory.isEmpty ? path : "\(directory)/\(path)"
         await perform(.files, success: "Ordner „\(path)“ wird erstellt.") {
-            try await self.client.createDirectory(self.id, path: path)
+            try await self.client.createDirectory(self.id, path: fullPath)
             await self.loadFiles()
         }
     }

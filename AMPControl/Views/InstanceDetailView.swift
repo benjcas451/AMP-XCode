@@ -398,9 +398,19 @@ private struct FilesTab: View {
 
     var body: some View {
         Loadable(value: model.files, loading: model.isLoading(.files)) { files in
-            let busy = model.isBusy(.files)
+            let busy = model.isBusy(.files) || model.isLoading(.files)
             List {
                 Section {
+                    if !model.directory.isEmpty {
+                        Button("Übergeordneter Ordner", systemImage: "arrow.up") {
+                            Task { await model.openParentFolder() }
+                        }
+                        .disabled(busy)
+                        .accessibilityIdentifier("files-parent")
+                    }
+                    Text(verbatim: model.directory.isEmpty ? "/" : "/\(model.directory)")
+                        .font(.footnote)
+                        .accessibilityIdentifier("files-path")
                     Button("Ordner erstellen", systemImage: "folder.badge.plus") {
                         Task { await model.createFolder() }
                     }
@@ -423,7 +433,13 @@ private struct FilesTab: View {
                                 .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if !file.isDirectory {
+                            if file.isDirectory {
+                                Button("Öffnen", systemImage: "chevron.right") {
+                                    Task { await model.openFolder(file) }
+                                }
+                                .accessibilityLabel("Ordner \(file.name) öffnen")
+                                .accessibilityIdentifier("open-folder-\(file.path)")
+                            } else {
                                 Button("Umbenennen", systemImage: "pencil") {
                                     Task { await model.renameFile(file) }
                                 }

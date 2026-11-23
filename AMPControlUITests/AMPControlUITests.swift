@@ -99,6 +99,23 @@ final class AMPControlUITests: XCTestCase {
         tab.tap()
     }
 
+    @MainActor
+    func testFolderNavigation() {
+        let app = launchFresh()
+        connect(app)
+        assertExists(app.navigationBars["Instanzen"], "Instance list")
+        dismissSavePasswordPrompt(in: app, timeout: 10)
+        tap(app.buttons["manage-mc"], in: app)
+        selectTab("files", in: app)
+        assertExists(app.staticTexts["server.properties"], "Root file")
+        tap(app.buttons["open-folder-world"], in: app)
+        assertExists(app.staticTexts["level.dat"], "File in subdirectory")
+        XCTAssertEqual(app.staticTexts["files-path"].label, "/world")
+        tap(app.buttons["files-parent"], in: app)
+        assertExists(app.staticTexts["server.properties"], "File after returning to root")
+        XCTAssertFalse(app.buttons["files-parent"].exists)
+    }
+
     // MARK: - Tests
 
     @MainActor
