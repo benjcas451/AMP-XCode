@@ -134,10 +134,17 @@ struct SettingsView: View {
 
             if app.isConfigured && !firstRun {
                 Section {
-                    Button("Zugangsdaten löschen", systemImage: "trash", role: .destructive) {
+                    Button(role: .destructive) {
                         Task { await model.clear() }
+                    } label: {
+                        // Spelled out because a list row tints a label's icon
+                        // with the accent colour, whatever the button's role.
+                        HStack(spacing: 12) {
+                            Image(systemName: "trash")
+                            Text("Zugangsdaten löschen")
+                        }
+                        .foregroundStyle(.red)
                     }
-                    .tint(.red)
                 }
             }
         }
