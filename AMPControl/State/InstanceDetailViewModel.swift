@@ -42,6 +42,13 @@ struct ConsoleLine: Identifiable, Hashable, Sendable {
     let entry: ConsoleEntry
 }
 
+/// A file opened in the editor. A new session for every opening, so that
+/// the editor screen is built afresh.
+struct FileEditorSession: Identifiable {
+    let id = UUID()
+    let model: FileEditorViewModel
+}
+
 /// State and actions of the instance detail screen.
 @MainActor
 @Observable
@@ -63,6 +70,8 @@ final class InstanceDetailViewModel {
     private(set) var backups: [BackupEntry]?
     private(set) var files: [FileEntry]?
     private(set) var directory = ""
+    /// The file being edited, shown on top of the detail screen.
+    var editor: FileEditorSession?
     private(set) var settings: [SettingEntry]?
     private(set) var tasks: [SchedulerTask]?
     private(set) var events: [AMPEvent]?
@@ -425,6 +434,19 @@ final class InstanceDetailViewModel {
                 self.id, path: file.path, newName: newName, isDirectory: file.isDirectory)
             await self.loadFiles()
         }
+    }
+
+    /// Opens `file` in the editor. The file list is read again after a
+    /// save, since size and date have changed.
+    func editFile(_ file: FileEntry) {
+        guard !file.isDirectory, editor == nil else { return }
+        let model = FileEditorViewModel(
+            file: file, instanceID: id, client: client, toasts: toasts
+        ) { [weak self] saved in
+            self?.editor = nil
+            if saved { await self?.loadFiles() }
+        }
+        editor = FileEditorSession(model: model)
     }
 
     // MARK: Settings

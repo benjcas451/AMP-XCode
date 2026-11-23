@@ -16,6 +16,15 @@ Portierung der Flutter-App [AMP-Flutter](https://github.com/benjcas451/AMP-Flutt
   - Spieler: aktuell verbundene Benutzer
   - Backups, Dateien, Settings, Zeitplan, Ereignisse, Spielserver-Update – jeweils nur,
     wenn die AMP-Installation die zugehörige API-Methode anbietet
+- **Dateien bearbeiten** direkt in der App (bis 8 MB, Textdateien bis 1 MB)
+  - Textdateien wie `.json`, `.csv`, `.xml`, `.properties`, `.yml`, `.txt`: Editor ohne
+    Autokorrektur; Kodierung (UTF-8, BOM, ISO-8859-1) und Zeilenenden bleiben erhalten,
+    JSON und XML werden vor dem Speichern geprüft
+  - Minecraft-NBT-Dateien (`.dat`, `.dat_old`, `.nbt`, `.mcstructure`, …) als Baum:
+    Werte ändern, Einträge hinzufügen und löschen. Das Format wird am Inhalt erkannt und
+    beim Speichern beibehalten: Java Edition (Big-Endian; gzip, zlib oder unkomprimiert)
+    und Bedrock Edition (Little-Endian, mit oder ohne den 8-Byte-Header der `level.dat`)
+  - Nach dem Speichern wird die Datei zurückgelesen und mit dem Gesendeten verglichen
 
 ## Aufbau
 
@@ -26,6 +35,7 @@ AMPControl/
   API/Models.swift               Instanzen, Status, Metriken, Konsolenzeilen, …
   API/JSONValue.swift            lose typisiertes JSON der AMP-Antworten
   API/HTTPTransport.swift        Netzwerk-Schnittstelle (URLSession bzw. Fake im Test)
+  Files/                         Dateiformate des Editors: Text, NBT (Java/Bedrock), gzip/zlib
   Services/                      Schlüsselbund-Speicher, Sperrlogik für Instanzaktionen
   State/                         App-Zustand und View-Models (Observation)
   Views/                         SwiftUI-Oberfläche

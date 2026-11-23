@@ -102,6 +102,28 @@ final class InstanceDetailViewModelTests {
         #expect(model.status?.state == .ready)
     }
 
+    @Test func filesOpenInTheEditorAndFoldersDoNot() async throws {
+        responses["FileManagerPlugin/GetDirectoryListing"] = [
+            ["Filename": "world", "IsDirectory": true],
+            ["Filename": "server.properties", "IsDirectory": false, "SizeBytes": 3],
+        ]
+        let model = try await model()
+        let folder = try #require(model.files?.first)
+        let file = try #require(model.files?.last)
+
+        model.editFile(folder)
+        #expect(model.editor == nil)
+        model.editFile(file)
+        let editor = try #require(model.editor?.model)
+        #expect(editor.file == file)
+
+        // One file at a time.
+        model.editFile(file)
+        #expect(model.editor?.model === editor)
+        await editor.close()
+        #expect(model.editor == nil)
+    }
+
     @Test func foldersNavigateRefreshAndCreateWithinTheCurrentDirectory() async throws {
         responses["FileManagerPlugin/GetDirectoryListing"] = [
             ["Filename": "world", "IsDirectory": true]

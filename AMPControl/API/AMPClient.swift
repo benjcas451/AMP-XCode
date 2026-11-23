@@ -491,6 +491,104 @@ final class AMPClient {
             instanceID: id)
     }
 
+    // MARK: File contents
+
+    /// File contents travel Base64-encoded in pieces of this many bytes.
+    static let fileChunkSize = 256 * 1024
+    /// Larger files are not loaded for editing.
+    static let maxEditableFileSize = 8 * 1024 * 1024
+    static let fileTooLarge = AMPError(
+        "Die Datei ist zu groß, um sie in der App zu bearbeiten (maximal 8 MB).")
+
+    /// Downloads a file.
+    func readFile(_ id: String, path: String) async throws -> Data {
+        let path = try nonEmpty(path, or: "Pfad darf nicht leer sein.")
+        var data = Data()
+        while true {
+            let chunk = try await readFileChunk(
+                id, path: path, position: data.count, length: Self.fileChunkSize)
+            // Read up to an empty piece rather than a short one: a server
+            // that hands out smaller pieces than asked for is not at the end.
+            if chunk.isEmpty { break }
+            data.append(chunk)
+            if data.count > Self.maxEditableFileSize { throw Self.fileTooLarge }
+        }
+        return data
+    }
+
+    private func readFileChunk(_ id: String, path: String, position: Int, length: Int)
+        async throws -> Data
+    {
+        let plugin = "FileManagerPlugin"
+        var method = "GetFileChunk"
+        var response: JSONValue?
+        if isMethodSupported(method, module: plugin, instanceID: id) {
+            do {
+                response = try await call(
+                    plugin, method,
+                    ["Filename": .string(path), "Position": .int(position), "Length": .int(length)],
+                    instanceID: id)
+            } catch let error as AMPError where error.isMethodUnavailable {
+                // Fall through to the method newer AMP versions offer instead.
+            }
+        }
+        if response == nil {
+            method = "ReadFileChunk"
+            response = try await call(
+                plugin, method,
+                ["Filename": .string(path), "Offset": .int(position), "ChunkSize": .int(length)],
+                instanceID: id)
+        }
+        return try read("\(plugin)/\(method)", response ?? .null) { value in
+            // Either the piece itself or wrapped in an action result.
+            let result = value["Result"] ?? value["result"] ?? value
+            if result.isNull { return Data() }
+            guard let encoded = result["Base64Data"]?.stringValue ?? result.stringValue,
+                let data = Data(base64Encoded: encoded)
+            else { throw InvalidResponse() }
+            return data
+        }
+    }
+
+    private func writeFileChunks(_ id: String, path: String, data: Data) async throws {
+        var offset = 0
+        repeat {
+            let end = min(offset + Self.fileChunkSize, data.count)
+            let chunk = data.subdata(in: (data.startIndex + offset)..<(data.startIndex + end))
+            try await action(
+                "FileManagerPlugin", "WriteFileChunk",
+                [
+                    "Filename": .string(path),
+                    "Data": .string(chunk.base64EncodedString()),
+                    "Offset": .int(offset),
+                    "FinalChunk": .bool(end == data.count),
+                ],
+                instanceID: id)
+            offset = end
+        } while offset < data.count
+    }
+
+    /// Replaces the contents of a file and reads them back to make sure
+    /// that the file now holds exactly `data`.
+    func writeFile(_ id: String, path: String, data: Data) async throws {
+        let path = try nonEmpty(path, or: "Pfad darf nicht leer sein.")
+        if data.count > Self.maxEditableFileSize { throw Self.fileTooLarge }
+        try await writeFileChunks(id, path: path, data: data)
+        var stored = try await readFile(id, path: path)
+        if stored.count > data.count, stored.prefix(data.count) == data {
+            // Writing over a longer file left its old end in place. Start
+            // from an empty file; the previous one stays in AMP's trash.
+            try await deleteFile(id, path: path)
+            try await writeFileChunks(id, path: path, data: data)
+            stored = try await readFile(id, path: path)
+        }
+        guard stored == data else {
+            throw AMPError(
+                "Die Datei wurde nicht vollständig gespeichert. Bitte den Inhalt auf dem "
+                    + "Server prüfen.")
+        }
+    }
+
     // MARK: Settings
 
     func getSettings(_ id: String) async throws -> [SettingEntry] {
