@@ -93,8 +93,12 @@ final class InstanceDetailViewModelTests {
         let model = try await model()
         let setting = try #require(model.settings?.first)
         #expect(setting.displayName == "Server message")
-        await model.editSetting(setting)
+        let edit = Task { await model.editSetting(setting) }
+        try await Task.sleep(for: .milliseconds(50))
         #expect(!model.dialogs.isRequestingText)
+        // Ends the edit should the prompt have been shown after all.
+        model.dialogs.answerText("changed")
+        await edit.value
         #expect(count("Core/SetConfig") == 0)
     }
 
