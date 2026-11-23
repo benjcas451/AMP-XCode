@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test (iOS Simulator)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      PROJECT: AMPControl.xcodeproj
+      SCHEME: AMPControl
+      DERIVED_DATA: build/DerivedData
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      # Runner images change their simulators over time, so take the newest
+      # iPhone that the selected Xcode can actually test on.
+      - name: Pick an iPhone simulator
+        id: simulator
+        run: |
+          destinations=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showdestinations 2>/dev/null \
+            | grep 'platform:iOS Simulator' | grep 'name:iPhone' || true)
+          echo "$destinations"
+          choice=$(echo "$destinations" \
+            | sed -E 's/.*id:([^,]+), OS:([^,]+), name:([^}]*[^ }]) *\}.*/\2|\1|\3/' \
+            | sort -t '|' -k1,1V | tail -n 1)
+          if [ -z "$choice" ]; then
+            echo "::error::No iPhone simulator available"
+            exit 1
+          fi
+          echo "Using $choice"
+          echo "udid=$(echo "$choice" | cut -d '|' -f 2)" >> "$GITHUB_OUTPUT"
+
+      - name: Boot simulator
+        run: |
+          xcrun simctl boot "${{ steps.simulator.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            | xcbeautify --renderer github-actions
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -only-testing:AMPControlTests \
+            -resultBundlePath build/UnitTests.xcresult \
+            | xcbeautify --renderer github-actions
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -only-testing:AMPControlUITests \
+            -resultBundlePath build/UITests.xcresult \
+            | xcbeautify --renderer github-actions
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          if [ -d build/UITests.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path build/UITests.xcresult --output-path build/screenshots || true
+          fi
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: screenshots
+          path: build/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results
+          path: build/*.xcresult
+          if-no-files-found: ignore
