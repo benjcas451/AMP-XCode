@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test (iOS Simulator)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      PROJECT: AMPControl.xcodeproj
+      SCHEME: AMPControl
+      DERIVED_DATA: build/DerivedData
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Project
+        run: xcodebuild -list -project "$PROJECT"
+
+      # Runner images change their simulators over time, so take an iPhone
+      # of the newest installed iOS runtime instead of naming one.
+      - name: Pick an iPhone simulator
+        id: simulator
+        run: |
+          choice=$(xcrun simctl list devices available --json | jq -r '
+            [ .devices | to_entries[]
+              | select(.key | test("SimRuntime\\.iOS-"))
+              | { version: (.key | capture("iOS-(?<v>[0-9-]+)$").v | split("-") | map(tonumber)),
+                  phones: [ .value[] | select(.name | startswith("iPhone")) ] }
+              | select(.phones | length > 0) ]
+            | sort_by(.version) | last
+            | . as $runtime
+            | ((.phones | map(select(.name | test("^iPhone [0-9]+$"))) | first) // .phones[0])
+            | "\(.udid)|\(.name)|iOS \($runtime.version | map(tostring) | join("."))"')
+          if [ -z "$choice" ] || [ "$choice" = "null" ]; then
+            xcrun simctl list devices available
+            echo "::error::No iPhone simulator available"
+            exit 1
+          fi
+          echo "Using $choice"
+          echo "udid=$(echo "$choice" | cut -d '|' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Boot simulator
+        run: |
+          xcrun simctl boot "${{ steps.simulator.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            | xcbeautify --renderer github-actions
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -only-testing:AMPControlTests \
+            -resultBundlePath build/UnitTests.xcresult \
+            | xcbeautify --renderer github-actions
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -only-testing:AMPControlUITests \
+            -resultBundlePath build/UITests.xcresult \
+            | xcbeautify --renderer github-actions
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          if [ -d build/UITests.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path build/UITests.xcresult --output-path build/screenshots || true
+          fi
+
+      # What was on screen when a UI test failed, readable without
+      # downloading the artifacts.
+      - name: Show UI hierarchy of failed UI tests
+        if: failure()
+        run: |
+          for file in build/screenshots/*.txt; do
+            [ -e "$file" ] || continue
+            echo "::group::$file"
+            head -n 150 "$file"
+            echo "::endgroup::"
+          done
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: screenshots
+          path: build/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results
+          path: build/*.xcresult
+          if-no-files-found: ignore
+
+      - name: Test summary
+        if: always()
+        run: |
+          for bundle in build/UnitTests.xcresult build/UITests.xcresult; do
+            [ -d "$bundle" ] || continue
+            xcrun xcresulttool get test-results summary --path "$bundle" \
+              | jq -r --arg name "$(basename "$bundle" .xcresult)" \
+                '"\($name): \(.result) – \(.passedTests) passed, \(.failedTests) failed, \(.skippedTests) skipped"' \
+              | tee -a "$GITHUB_STEP_SUMMARY" || true
+          done
