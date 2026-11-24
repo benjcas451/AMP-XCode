@@ -49,6 +49,18 @@ struct FileEditorSession: Identifiable {
     let model: FileEditorViewModel
 }
 
+/// How far the upload of a file has got.
+struct UploadProgress: Equatable, Sendable {
+    var name: String
+    /// Which of the chosen files this is, starting at 1.
+    var position: Int
+    var count: Int
+    var sent = 0
+    var total = 0
+
+    var fraction: Double { total > 0 ? Double(sent) / Double(total) : 0 }
+}
+
 /// State and actions of the instance detail screen.
 @MainActor
 @Observable
@@ -72,6 +84,8 @@ final class InstanceDetailViewModel {
     private(set) var directory = ""
     /// The file being edited, shown on top of the detail screen.
     var editor: FileEditorSession?
+    /// The upload in progress, if any.
+    private(set) var upload: UploadProgress?
     private(set) var settings: [SettingEntry]?
     private(set) var tasks: [SchedulerTask]?
     private(set) var events: [AMPEvent]?
@@ -86,6 +100,7 @@ final class InstanceDetailViewModel {
     @ObservationIgnored private let client: AMPClient
     @ObservationIgnored private let toasts: ToastCenter
     @ObservationIgnored private var polling = false
+    @ObservationIgnored private var uploadTask: Task<UploadReport, Never>?
     @ObservationIgnored private var nextConsoleID = 0
     /// Cleared when the screen is gone, so late results stay silent.
     @ObservationIgnored private var onScreen = true
@@ -434,6 +449,179 @@ final class InstanceDetailViewModel {
                 self.id, path: file.path, newName: newName, isDirectory: file.isDirectory)
             await self.loadFiles()
         }
+    }
+
+    // MARK: Upload
+
+    /// What became of the files of one upload.
+    private struct UploadReport {
+        /// Name and size of every file that was sent completely.
+        var sent: [(name: String, size: Int)] = []
+        var cancelled = false
+        var problem: String?
+    }
+
+    private enum ConflictAnswer {
+        case replace
+        case rename(String)
+        case skip
+    }
+
+    /// `name` with a counter before its extension that makes it free:
+    /// `server.properties` becomes `server-1.properties`.
+    static func numberedName(for name: String, isTaken: (String) -> Bool) -> String {
+        var stem = name
+        var suffix = ""
+        // A leading dot belongs to the name (`.env`), it starts no extension.
+        if let dot = name.lastIndex(of: "."), dot != name.startIndex {
+            stem = String(name[..<dot])
+            suffix = String(name[dot...])
+        }
+        var counter = 1
+        while isTaken("\(stem)-\(counter)\(suffix)") {
+            counter += 1
+        }
+        return "\(stem)-\(counter)\(suffix)"
+    }
+
+    /// Uploads local files into the folder on screen. Where a name is
+    /// already taken there, the user decides what happens.
+    func uploadFiles(_ sources: [URL]) async {
+        guard !sources.isEmpty, uploadTask == nil, !isBusy(.files) else { return }
+        let folder = directory
+        busy.insert(.files)
+        let task = Task { await self.sendFiles(sources, into: folder) }
+        uploadTask = task
+        var report = await task.value
+        uploadTask = nil
+        upload = nil
+        busy.remove(.files)
+
+        await loadFiles()
+        if report.problem == nil, !report.cancelled, tabErrors[.files] == nil {
+            // The list has just been read again: compare it with what was sent.
+            for file in report.sent {
+                let stored = files?.first { $0.name == file.name }
+                // A listing without sizes reports 0 and cannot be compared.
+                let size = stored?.sizeBytes ?? 0
+                if stored == nil || (size > 0 && size != file.size) {
+                    report.problem =
+                        "„\(file.name)“ wurde nicht vollständig hochgeladen. "
+                        + "Bitte die Datei auf dem Server prüfen."
+                    break
+                }
+            }
+        }
+        guard onScreen else { return }
+        if let problem = report.problem {
+            toasts.show(problem, isError: true)
+        } else if report.cancelled {
+            toasts.show("Upload abgebrochen.")
+        } else if sources.count == 1, let file = report.sent.first {
+            toasts.show("„\(file.name)“ wurde hochgeladen.")
+        } else if report.sent.count == sources.count {
+            toasts.show("\(report.sent.count) Dateien wurden hochgeladen.")
+        } else if !report.sent.isEmpty {
+            toasts.show("\(report.sent.count) von \(sources.count) Dateien wurden hochgeladen.")
+        }
+    }
+
+    /// Stops the upload in progress. Files already sent stay on the server.
+    func cancelUpload() {
+        uploadTask?.cancel()
+    }
+
+    private func sendFiles(_ sources: [URL], into folder: String) async -> UploadReport {
+        var report = UploadReport()
+        var taken: [String: FileEntry]
+        do {
+            let listing = try await client.getFiles(id, directory: folder)
+            taken = Dictionary(listing.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        } catch {
+            report.cancelled = error is CancellationError
+            report.problem = (error as? AMPError)?.message
+            return report
+        }
+
+        for (index, source) in sources.enumerated() {
+            if Task.isCancelled {
+                report.cancelled = true
+                break
+            }
+            var name = source.lastPathComponent
+            var replaced: FileEntry?
+            if let existing = taken[name] {
+                switch await askAboutConflict(with: existing, taken: taken, isOnlyFile: sources.count == 1) {
+                case .skip: continue
+                case .replace: replaced = existing
+                case .rename(let free): name = free
+                }
+            }
+            let path = folder.isEmpty ? name : "\(folder)/\(name)"
+            upload = UploadProgress(name: name, position: index + 1, count: sources.count)
+
+            var started = false
+            do {
+                if let replaced {
+                    // Writing does not cut off a longer file, so the old one
+                    // has to go first. It stays in AMP's trash.
+                    try await client.deleteFile(id, path: replaced.path)
+                }
+                started = true
+                let size = try await client.uploadFile(id, path: path, from: source) { sent, total in
+                    self.upload?.sent = sent
+                    self.upload?.total = total
+                }
+                report.sent.append((name, size))
+                taken[name] = FileEntry(json: ["Filename": .string(name), "Path": .string(path)])
+            } catch {
+                if started { await discardPartialUpload(path) }
+                if error is CancellationError || Task.isCancelled {
+                    report.cancelled = true
+                } else if let failure = error as? AMPError {
+                    report.problem = "„\(name)“: \(failure.message)"
+                } else {
+                    report.problem = "„\(name)“ konnte nicht gelesen werden."
+                }
+                if replaced != nil, started {
+                    let hint = "Die bisherige Datei liegt im Papierkorb von AMP."
+                    report.problem = [report.problem ?? "Upload abgebrochen.", hint]
+                        .joined(separator: " ")
+                }
+                break
+            }
+        }
+        return report
+    }
+
+    private func askAboutConflict(
+        with existing: FileEntry, taken: [String: FileEntry], isOnlyFile: Bool
+    ) async -> ConflictAnswer {
+        let free = Self.numberedName(for: existing.name) { taken[$0] != nil }
+        var options = [ChoicePrompt.Option(label: "Als „\(free)“ hochladen")]
+        var message = "Einen Ordner namens „\(existing.name)“ gibt es hier schon."
+        if !existing.isDirectory {
+            options.insert(ChoicePrompt.Option(label: "Ersetzen", isDestructive: true), at: 0)
+            message =
+                "„\(existing.name)“ gibt es in diesem Ordner schon. Beim Ersetzen wandert "
+                + "die bisherige Datei in den Papierkorb von AMP."
+        }
+        let choice = await dialogs.choose(
+            ChoicePrompt(
+                title: "Datei existiert bereits",
+                message: message,
+                options: options,
+                cancelLabel: isOnlyFile ? "Abbrechen" : "Überspringen"
+            ))
+        guard let choice else { return .skip }
+        return options[choice].isDestructive ? .replace : .rename(free)
+    }
+
+    /// Moves what arrived of a failed upload to AMP's trash.
+    private func discardPartialUpload(_ path: String) async {
+        // In a task of its own: the upload's task may have been cancelled,
+        // which would cancel this request along with it.
+        await Task { _ = try? await self.client.deleteFile(self.id, path: path) }.value
     }
 
     /// Opens `file` in the editor. The file list is read again after a

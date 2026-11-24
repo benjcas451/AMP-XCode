@@ -207,6 +207,20 @@ private struct DialogPresenter: ViewModifier {
             } message: { prompt in
                 Text(prompt.message)
             }
+            .alert(
+                dialogs.choicePrompt?.title ?? "",
+                isPresented: presented(dialogs.isChoosing, promptID: dialogs.choicePrompt?.id),
+                presenting: dialogs.choicePrompt
+            ) { prompt in
+                ForEach(Array(prompt.options.enumerated()), id: \.offset) { index, option in
+                    Button(option.label, role: option.isDestructive ? .destructive : nil) {
+                        dialogs.answerChoice(index)
+                    }
+                }
+                Button(prompt.cancelLabel, role: .cancel) { dialogs.answerChoice(nil) }
+            } message: { prompt in
+                Text(prompt.message)
+            }
     }
 }
 

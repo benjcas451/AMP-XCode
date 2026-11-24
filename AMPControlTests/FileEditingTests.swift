@@ -8,6 +8,8 @@ import Testing
 @MainActor
 final class FakeFileServer {
     var files: [String: [UInt8]] = [:]
+    /// Folders that exist without holding a file.
+    var folders: Set<String> = []
     private(set) var requests: [RecordedRequest] = []
 
     /// Whether writing into a longer file cuts off its old end.
@@ -18,6 +20,8 @@ final class FakeFileServer {
     var maxChunk = Int.max
     var ignoresWrites = false
     var writeFailure: String?
+    /// Called for every piece written, before it is stored.
+    var onWrite: (() -> Void)?
 
     private(set) lazy var client = AMPClient(
         baseURL: "http://amp.local", username: "", password: "",
@@ -58,7 +62,7 @@ final class FakeFileServer {
         case "Core/Login":
             return ["success": true, "sessionID": "session"]
         case "FileManagerPlugin/GetDirectoryListing":
-            return []
+            return listing(of: body["Dir"]?.stringValue ?? "")
         case "FileManagerPlugin/GetFileChunk":
             guard hasGetFileChunk else {
                 return ["Title": "MissingMethodException", "Message": "Missing method", "StackTrace": ""]
@@ -71,6 +75,7 @@ final class FakeFileServer {
                 name, position: body["Offset"]?.lenientInt ?? 0,
                 length: body["ChunkSize"]?.lenientInt ?? 0)
         case "FileManagerPlugin/WriteFileChunk":
+            onWrite?()
             if let writeFailure { return ["Status": false, "Reason": .string(writeFailure)] }
             if ignoresWrites { return ["Status": true] }
             let data = [UInt8](Data(base64Encoded: body["Data"]?.stringValue ?? "") ?? Data())
@@ -89,6 +94,30 @@ final class FakeFileServer {
         default:
             return .null
         }
+    }
+
+    /// The files and folders directly inside `directory`.
+    private func listing(of directory: String) -> JSONValue {
+        let prefix = directory.isEmpty ? "" : directory + "/"
+        func child(of path: String) -> String? {
+            guard path.hasPrefix(prefix) else { return nil }
+            return path.dropFirst(prefix.count).split(separator: "/").first.map(String.init)
+        }
+        var entries: [String: JSONValue] = [:]
+        for folder in folders {
+            if let name = child(of: folder) {
+                entries[name] = ["Filename": .string(name), "IsDirectory": true]
+            }
+        }
+        for (path, contents) in files {
+            guard let name = child(of: path) else { continue }
+            let isFile = path == prefix + name
+            entries[name] =
+                isFile
+                ? ["Filename": .string(name), "IsDirectory": false, "SizeBytes": .int(contents.count)]
+                : ["Filename": .string(name), "IsDirectory": true]
+        }
+        return .array(entries.keys.sorted().compactMap { entries[$0] })
     }
 
     private func chunk(_ name: String, position: Int, length: Int) -> JSONValue {
