@@ -18,9 +18,7 @@ final class MockAMPServer {
 
     /// The contents of the Minecraft instance's files, by path.
     private var files: [String: Data] = [
-        "server.properties": Data("motd=Welcome
-max-players=20
-".utf8),
+        "server.properties": Data("motd=Welcome\nmax-players=20\n".utf8),
         "world/level.dat": Data(base64Encoded: MockAMPServer.levelDat) ?? Data(),
     ]
 
