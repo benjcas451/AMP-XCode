@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One instance: server control, console, players and the plugin sections
 /// this AMP installation supports.
@@ -398,6 +399,7 @@ private struct BackupsTab: View {
 
 private struct FilesTab: View {
     let model: InstanceDetailViewModel
+    @State private var pickingFiles = false
 
     var body: some View {
         Loadable(value: model.files, loading: model.isLoading(.files)) { files in
@@ -418,6 +420,14 @@ private struct FilesTab: View {
                         Task { await model.createFolder() }
                     }
                     .disabled(busy)
+                    Button("Dateien hochladen", systemImage: "square.and.arrow.up") {
+                        pickingFiles = true
+                    }
+                    .disabled(busy)
+                    .accessibilityIdentifier("files-upload")
+                    if let progress = model.upload {
+                        uploadProgress(progress)
+                    }
                 }
                 Section {
                     ForEach(files) { file in
@@ -465,6 +475,43 @@ private struct FilesTab: View {
                 }
             }
             .refreshable { await model.loadFiles() }
+            .fileImporter(
+                isPresented: $pickingFiles, allowedContentTypes: [.item],
+                allowsMultipleSelection: true
+            ) { result in
+                if case .success(let urls) = result { startUpload(urls) }
+            }
+        }
+    }
+
+    private func uploadProgress(_ upload: UploadProgress) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(
+                    verbatim: upload.count > 1
+                        ? "\(upload.name) (\(upload.position) von \(upload.count))" : upload.name
+                )
+                .font(.footnote)
+                .lineLimit(1)
+                ProgressView(value: upload.fraction)
+            }
+            Button("Upload abbrechen", systemImage: "xmark.circle.fill") {
+                model.cancelUpload()
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("files-upload-progress")
+    }
+
+    private func startUpload(_ urls: [URL]) {
+        Task {
+            // Files from outside the app are only readable while access to
+            // them is claimed.
+            let claimed = urls.filter { $0.startAccessingSecurityScopedResource() }
+            defer { claimed.forEach { $0.stopAccessingSecurityScopedResource() } }
+            await model.uploadFiles(urls)
         }
     }
 }

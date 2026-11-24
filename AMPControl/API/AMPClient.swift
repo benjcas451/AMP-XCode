@@ -550,22 +550,64 @@ final class AMPClient {
         }
     }
 
+    private func writeFileChunk(
+        _ id: String, path: String, chunk: Data, offset: Int, isFinal: Bool
+    ) async throws {
+        try await action(
+            "FileManagerPlugin", "WriteFileChunk",
+            [
+                "Filename": .string(path),
+                "Data": .string(chunk.base64EncodedString()),
+                "Offset": .int(offset),
+                "FinalChunk": .bool(isFinal),
+            ],
+            instanceID: id)
+    }
+
     private func writeFileChunks(_ id: String, path: String, data: Data) async throws {
         var offset = 0
         repeat {
             let end = min(offset + Self.fileChunkSize, data.count)
             let chunk = data.subdata(in: (data.startIndex + offset)..<(data.startIndex + end))
-            try await action(
-                "FileManagerPlugin", "WriteFileChunk",
-                [
-                    "Filename": .string(path),
-                    "Data": .string(chunk.base64EncodedString()),
-                    "Offset": .int(offset),
-                    "FinalChunk": .bool(end == data.count),
-                ],
-                instanceID: id)
+            try await writeFileChunk(
+                id, path: path, chunk: chunk, offset: offset, isFinal: end == data.count)
             offset = end
         } while offset < data.count
+    }
+
+    /// Uploads the local file at `source` to `path` and returns its size.
+    ///
+    /// The file is read and sent piece by piece, so its size is not limited
+    /// by memory. Writing starts at the beginning of `path` and does not cut
+    /// off a longer file already there: upload to a free path.
+    @discardableResult
+    func uploadFile(
+        _ id: String,
+        path: String,
+        from source: URL,
+        progress: @MainActor (_ sent: Int, _ total: Int) -> Void = { _, _ in }
+    ) async throws -> Int {
+        let path = try nonEmpty(path, or: "Pfad darf nicht leer sein.")
+        let handle = try FileHandle(forReadingFrom: source)
+        defer { try? handle.close() }
+        let total = Int(try handle.seekToEnd())
+        try handle.seek(toOffset: 0)
+
+        var offset = 0
+        var isFinal = false
+        progress(0, total)
+        repeat {
+            try Task.checkCancellation()
+            let chunk = try handle.read(upToCount: Self.fileChunkSize) ?? Data()
+            // An empty piece ends the upload even if the file has shrunk
+            // since its size was read.
+            isFinal = chunk.isEmpty || offset + chunk.count >= total
+            try await writeFileChunk(
+                id, path: path, chunk: chunk, offset: offset, isFinal: isFinal)
+            offset += chunk.count
+            progress(offset, total)
+        } while !isFinal
+        return offset
     }
 
     /// Replaces the contents of a file and reads them back to make sure

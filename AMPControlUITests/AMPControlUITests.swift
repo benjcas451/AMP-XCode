@@ -108,6 +108,7 @@ final class AMPControlUITests: XCTestCase {
         tap(app.buttons["manage-mc"], in: app)
         selectTab("files", in: app)
         assertExists(app.staticTexts["server.properties"], "Root file")
+        XCTAssertTrue(app.buttons["files-upload"].isEnabled, "Upload button")
         tap(app.buttons["open-folder-world"], in: app)
         assertExists(app.staticTexts["level.dat"], "File in subdirectory")
         XCTAssertEqual(app.staticTexts["files-path"].label, "/world")

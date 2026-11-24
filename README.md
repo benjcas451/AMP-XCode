@@ -16,6 +16,13 @@ Portierung der Flutter-App [AMP-Flutter](https://github.com/benjcas451/AMP-Flutt
   - Spieler: aktuell verbundene Benutzer
   - Backups, Dateien, Settings, Zeitplan, Ereignisse, Spielserver-Update – jeweils nur,
     wenn die AMP-Installation die zugehörige API-Methode anbietet
+- **Dateien hochladen** in den gerade geöffneten Ordner, auch mehrere auf einmal und ohne
+  Größenbeschränkung durch die App (die Datei wird stückweise gelesen und gesendet)
+  - Gibt es den Namen dort schon, fragt die App: ersetzen, unter einem nummerierten Namen
+    hochladen (`server.properties` → `server-1.properties`) oder abbrechen
+  - Beim Ersetzen wandert die bisherige Datei zuerst in den Papierkorb von AMP
+  - Fortschrittsanzeige mit Abbrechen; was von einem abgebrochenen oder fehlgeschlagenen
+    Upload schon angekommen ist, wird wieder entfernt
 - **Dateien bearbeiten** direkt in der App (bis 8 MB, Textdateien bis 1 MB)
   - Textdateien wie `.json`, `.csv`, `.xml`, `.properties`, `.yml`, `.txt`: Editor ohne
     Autokorrektur; Kodierung (UTF-8, BOM, ISO-8859-1) und Zeilenenden bleiben erhalten,
