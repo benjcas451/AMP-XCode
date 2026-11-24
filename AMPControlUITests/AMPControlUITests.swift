@@ -116,6 +116,69 @@ final class AMPControlUITests: XCTestCase {
         XCTAssertFalse(app.buttons["files-parent"].exists)
     }
 
+    @MainActor
+    func testEditTextAndNBTFiles() {
+        let app = launchFresh()
+        connect(app)
+        assertExists(app.navigationBars["Instanzen"], "Instance list")
+        dismissSavePasswordPrompt(in: app, timeout: 10)
+        tap(app.buttons["manage-mc"], in: app)
+        selectTab("files", in: app)
+
+        // A text file: change it, save it, open it again.
+        let editProperties = app.buttons["edit-file-server.properties"]
+        assertExists(editProperties, "Edit button of the text file")
+        tap(editProperties, in: app)
+        let editor = app.textViews["file-editor-text"]
+        assertExists(editor, "Text editor")
+        XCTAssertEqual(editor.value as? String, "motd=Welcome\nmax-players=20\n")
+        XCTAssertEqual(app.staticTexts["file-editor-details"].label, "Text · UTF-8 · LF")
+        XCTAssertFalse(app.buttons["Speichern"].isEnabled)
+        tap(editor, in: app)
+        editor.typeText("pvp=true")
+        attachScreenshot("11 Text editor", of: app)
+        tap(app.buttons["Speichern"], in: app)
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 15), "Editor still open after saving")
+
+        assertExists(editProperties, "File list after saving")
+        tap(editProperties, in: app)
+        assertExists(editor, "Text editor, reopened")
+        XCTAssertTrue((editor.value as? String)?.contains("pvp=true") == true)
+        tap(app.buttons["Schließen"], in: app)
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 15), "Editor still open after closing")
+
+        // Minecraft's level.dat: a tree of tags.
+        tap(app.buttons["open-folder-world"], in: app)
+        let editLevel = app.buttons["edit-file-world/level.dat"]
+        assertExists(editLevel, "Edit button of level.dat")
+        tap(editLevel, in: app)
+        assertExists(
+            app.staticTexts["NBT · Java Edition (Big-Endian) · gzip"], "Detected NBT format")
+        attachScreenshot("12 NBT editor", of: app)
+        tap(app.buttons["nbt-Data"], in: app)
+        let levelName = app.buttons["nbt-LevelName"]
+        assertExists(levelName, "Level name tag")
+        tap(levelName, in: app)
+
+        let prompt = app.alerts["LevelName"]
+        assertExists(prompt, "Value prompt")
+        let field = prompt.textFields.firstMatch
+        XCTAssertEqual(field.value as? String, "Survival")
+        field.tap()
+        field.typeText(" 2")
+        prompt.buttons["Übernehmen"].tap()
+        assertExists(element(labelled: "Survival 2", in: app), "Changed value")
+        attachScreenshot("13 NBT value changed", of: app)
+        tap(app.buttons["Speichern"], in: app)
+        XCTAssertTrue(levelName.waitForNonExistence(timeout: 15), "Editor still open after saving")
+
+        // What was written is a level.dat the app reads again.
+        assertExists(editLevel, "File list after saving level.dat")
+        tap(editLevel, in: app)
+        tap(app.buttons["nbt-Data"], in: app)
+        assertExists(element(labelled: "Survival 2", in: app), "Saved value")
+    }
+
     // MARK: - Tests
 
     @MainActor

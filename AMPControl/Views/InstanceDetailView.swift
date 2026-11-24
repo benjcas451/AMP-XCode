@@ -32,6 +32,9 @@ struct InstanceDetailView: View {
         }
         .task { await model.run() }
         .dialogs(model.dialogs)
+        .fullScreenCover(item: $model.editor) { session in
+            FileEditorView(model: session.model)
+        }
     }
 
     private func pollingError(_ error: String) -> some View {
@@ -440,7 +443,12 @@ private struct FilesTab: View {
                                 .accessibilityLabel("Ordner \(file.name) öffnen")
                                 .accessibilityIdentifier("open-folder-\(file.path)")
                             } else {
-                                Button("Umbenennen", systemImage: "pencil") {
+                                Button("Bearbeiten", systemImage: "square.and.pencil") {
+                                    model.editFile(file)
+                                }
+                                .accessibilityLabel("Datei \(file.name) bearbeiten")
+                                .accessibilityIdentifier("edit-file-\(file.path)")
+                                Button("Umbenennen", systemImage: "character.cursor.ibeam") {
                                     Task { await model.renameFile(file) }
                                 }
                                 Button("Löschen", systemImage: "trash") {

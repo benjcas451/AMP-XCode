@@ -4,8 +4,8 @@ import Network
 /// A small HTTP server on the loopback interface that plays the part of an
 /// AMP panel, so that UI tests can drive the real app end to end.
 ///
-/// It knows the user `admin` / `secret`, a running Minecraft instance and a
-/// stopped Valheim instance.
+/// It knows the user `admin` / `secret`, a running Minecraft instance with
+/// two files that can be read and written, and a stopped Valheim instance.
 final class MockAMPServer {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "MockAMPServer")
@@ -15,6 +15,21 @@ final class MockAMPServer {
     private var pendingConsole = [
         #"{"Timestamp":"/Date(1700000000000)/","Source":"Console","Type":"Console","Contents":"Done (3.2s)! For help, type help"}"#
     ]
+
+    /// The contents of the Minecraft instance's files, by path.
+    private var files: [String: Data] = [
+        "server.properties": Data("motd=Welcome\nmax-players=20\n".utf8),
+        "world/level.dat": Data(base64Encoded: MockAMPServer.levelDat) ?? Data(),
+    ]
+
+    /// A Java Edition level.dat (gzip): a root compound holding "Data" with
+    /// LevelName "Survival", hardcore 0, GameType 0 and more.
+    private static let levelDat =
+        "H4sIAAAAAAAC/zVQO07DQBB9wd7ENqFDFIjCNReggxARRUERinAayhUewMLetdaOkalyADoqJCQ4AScIUaRchAuk" +
+        "oaKK2Y1hpNF83nua0fMAD/YZz7kDd0gFxRc8ITjBRBVRweMGnDuuwmupCBacvgbHZUrQYaEZpPxBXOm+Y8MeR4nZ" +
+        "H8xf9neb8LpShaSC6JFOn16PjIDBVTwSmyvHU2ALrYJUFklx/unATmQeYq+vlrPlG/mr99lq/uEvpn5PhOSiHZDS" +
+        "7K7iIswc1GouojjmYClPSblgvSTNS3MKLbBumVNm/mysrW3YA5FvJp2NqqrWsJ+/2mBDKW7/9/jDqg2u+0P2DRfW" +
+        "SGZNQzn5qTmdUV0XXl09uMaYy0lM+rWde6J0IAoSuVQl2A2PM2PMLzAFEcFrAQAA"
 
     private(set) var port: UInt16 = 0
 
@@ -143,9 +158,37 @@ final class MockAMPServer {
             return #"[{"Id":"b1","Name":"world-2024-06-01","Timestamp":"2024-06-01T12:00:00Z","TotalSizeBytes":20971520}]"#
         case "FileManagerPlugin/GetDirectoryListing":
             if body["Dir"] as? String == "world" {
-                return #"[{"Filename":"level.dat","IsDirectory":false,"SizeBytes":2048}]"#
+                let size = files["world/level.dat"]?.count ?? 0
+                return #"[{"Filename":"level.dat","IsDirectory":false,"SizeBytes":\#(size)}]"#
             }
-            return #"[{"Filename":"world","IsDirectory":true},{"Filename":"server.properties","IsDirectory":false,"SizeBytes":1280}]"#
+            let size = files["server.properties"]?.count ?? 0
+            return #"[{"Filename":"world","IsDirectory":true},{"Filename":"server.properties","IsDirectory":false,"SizeBytes":\#(size)}]"#
+        case "FileManagerPlugin/GetFileChunk":
+            guard let contents = files[body["Filename"] as? String ?? ""] else {
+                return #"{"Status":false,"Reason":"File not found"}"#
+            }
+            let start = min(max(body["Position"] as? Int ?? 0, 0), contents.count)
+            let end = min(start + max(body["Length"] as? Int ?? 0, 0), contents.count)
+            let piece = contents.subdata(in: start..<end)
+            return #"{"Result":{"Base64Data":"\#(piece.base64EncodedString())","BytesLength":\#(piece.count)},"Status":true}"#
+        case "FileManagerPlugin/WriteFileChunk":
+            let name = body["Filename"] as? String ?? ""
+            let offset = body["Offset"] as? Int ?? 0
+            let contents = files[name] ?? Data()
+            guard offset <= contents.count,
+                let data = Data(base64Encoded: body["Data"] as? String ?? "")
+            else { return #"{"Status":false,"Reason":"Write failed"}"# }
+            // Like a file opened for writing at an offset: the old end of a
+            // longer file stays, which the app has to deal with.
+            var updated = contents.subdata(in: 0..<offset) + data
+            if contents.count > updated.count {
+                updated += contents.subdata(in: updated.count..<contents.count)
+            }
+            files[name] = updated
+            return #"{"Status":true}"#
+        case "FileManagerPlugin/TrashFile":
+            files[body["Filename"] as? String ?? ""] = nil
+            return #"{"Status":true}"#
         case "Core/GetSettingsSpec":
             return """
                 {"Minecraft":[
